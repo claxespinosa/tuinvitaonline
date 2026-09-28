@@ -3,22 +3,27 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 
-// Definimos la estructura de los datos del evento
-type EventData = {
+// Tipado extensible para la configuración visual y datos de contacto
+export type DesignConfig = {
+  primaryColor: string
+  fontFamily: string
+  showGifts: boolean
+  organizerPhone?: string
+  organizerEmail?: string
+  [key: string]: any
+}
+
+export type EventData = {
   id: string
   title: string
   event_date: string
-  design_config: {
-    primaryColor: string
-    fontFamily: string
-    showGifts: boolean
-  }
+  design_config: DesignConfig
 }
 
 type EventContextType = {
   eventData: EventData
   updateEventData: (newData: Partial<EventData>) => void
-  updateDesignConfig: (newConfig: Partial<EventData['design_config']>) => void
+  updateDesignConfig: (newConfig: Partial<DesignConfig>) => void
   isSaving: boolean
 }
 
@@ -34,14 +39,13 @@ export function EventProvider({ children, initialData }: { children: React.React
     setEventData((prev) => ({ ...prev, ...newData }))
   }
 
-  const updateDesignConfig = (newConfig: Partial<EventData['design_config']>) => {
+  const updateDesignConfig = (newConfig: Partial<DesignConfig>) => {
     setEventData((prev) => ({
       ...prev,
       design_config: { ...prev.design_config, ...newConfig }
     }))
   }
 
-  // AUTO-GUARDADO (Debounce): Espera 1 segundo después de que el usuario deja de teclear para guardar en BD
   // AUTO-GUARDADO (Debounce): Espera 1 segundo después de que el usuario deja de teclear
   useEffect(() => {
     const saveTimer = setTimeout(async () => {
@@ -62,7 +66,6 @@ export function EventProvider({ children, initialData }: { children: React.React
       } catch (err) {
         console.error('Error inesperado:', err)
       } finally {
-        // El finally garantiza que siempre se apague el indicador, haya error o éxito
         setIsSaving(false)
       }
     }, 1000)
