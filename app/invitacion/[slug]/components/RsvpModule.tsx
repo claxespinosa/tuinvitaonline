@@ -444,19 +444,23 @@ export default function RsvpModule({
         Cerrar ventana
       </button>
 
-      {/* 4. MODAL DE INSTRUCCIONES WHATSAPP (Solo Desktop) */}
+      {/* 4. MODAL DE INSTRUCCIONES WHATSAPP (Textos Optimizados) */}
       {whatsappModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
             <div className="text-4xl mb-3">📋</div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">¡Pase copiado!</h3>
+            
             <p className="text-sm text-gray-600 mb-6 leading-relaxed">
               La imagen de tu pase está en el portapapeles.<br/><br/>
-              Haz clic en continuar, ve a la barra de tu chat y presiona:<br/>
-              <strong className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded-lg mt-3 inline-block font-mono text-sm border border-gray-200 shadow-sm">
-                Ctrl + V <span className="font-sans font-normal text-xs text-gray-500">(o Cmd+V)</span>
-              </strong>
+              Al abrir WhatsApp, haz clic en la barra de chat y <strong>pégalo manualmente</strong> presionando:
+              <span className="bg-gray-100 text-gray-800 px-3 py-2 rounded-xl mt-3 block font-mono text-sm border border-gray-200 shadow-sm text-left">
+                • <strong>Ctrl + V</strong> <span className="font-sans text-xs text-gray-500">(Windows)</span><br/>
+                • <strong>Cmd + V</strong> <span className="font-sans text-xs text-gray-500">(Mac)</span><br/>
+                • <strong>"Pegar"</strong> <span className="font-sans text-xs text-gray-500">(Celular)</span>
+              </span>
             </p>
+
             <div className="flex flex-col gap-2">
               <a
                 href={whatsappModal.url}
@@ -465,7 +469,7 @@ export default function RsvpModule({
                 onClick={() => setWhatsappModal({show: false, url: ''})}
                 className="w-full bg-[#25D366] text-white font-bold py-3.5 rounded-xl hover:bg-[#1ebd5a] transition-colors shadow-sm flex items-center justify-center gap-2"
               >
-                Continuar a WhatsApp
+                Abrir WhatsApp
               </a>
               <button
                 onClick={() => setWhatsappModal({show: false, url: ''})}
