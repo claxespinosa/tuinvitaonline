@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 
+// 1. INTERFAZ ACTUALIZADA: Agregamos qr_hash
 interface Pass {
   id: string
   guest_name: string
   rsvp_status: string
+  qr_hash: string 
 }
 
 interface RsvpModuleProps {
@@ -18,6 +20,7 @@ interface RsvpModuleProps {
   eventTitle: string
   eventDate: string
   eventLocation: string
+  eventId?: string
 }
 
 export default function RsvpModule({
@@ -28,7 +31,8 @@ export default function RsvpModule({
   organizerEmail,
   eventTitle,
   eventDate,
-  eventLocation
+  eventLocation,
+  eventId
 }: RsvpModuleProps) {
   const supabase = createClient()
   const [isOpen, setIsOpen] = useState(false)
@@ -36,6 +40,19 @@ export default function RsvpModule({
   const [activeSlide, setActiveSlide] = useState(0)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [isProcessingPass, setIsProcessingPass] = useState(false)
+
+  const [email, setEmail] = useState('')
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'loading' | 'sent' | 'hidden'>('idle')
+
+  // Verifica si ya se envió el correo en este dispositivo
+  useEffect(() => {
+    const storageKey = `promo_claimed_${eventId || 'default'}`
+    const hasClaimedLocally = localStorage.getItem(storageKey)
+    
+    if (contactEmail || hasClaimedLocally) {
+      setEmailStatus('hidden')
+    }
+  }, [contactEmail, eventId])
 
   const hasPhone = Boolean(organizerPhone && organizerPhone.trim().length > 0)
   const hasEmail = Boolean(organizerEmail && organizerEmail.trim().length > 0)
@@ -63,7 +80,27 @@ export default function RsvpModule({
     setUpdatingId(null)
   }
 
-  // Generador de la imagen completa del Pase Digital con todos los datos
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email) return
+    setEmailStatus('loading')
+    
+    // Aquí conectarás tu Server Action cuando lo tengas listo
+    // await sendPassAndCouponEmail(email, eventId, confirmedPasses)
+    
+    setTimeout(() => {
+      setEmailStatus('sent') 
+      
+      const storageKey = `promo_claimed_${eventId || 'default'}`
+      localStorage.setItem(storageKey, 'true')
+      
+      setTimeout(() => {
+        setEmailStatus('hidden')
+      }, 2000)
+    }, 1500)
+  }
+
+  // Generador de la imagen completa del Pase Digital
   const createPassCanvas = async (pass: Pass): Promise<HTMLCanvasElement> => {
     const canvas = document.createElement('canvas')
     canvas.width = 750
@@ -71,20 +108,14 @@ export default function RsvpModule({
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('No se pudo inicializar canvas')
 
-    // Fondo
     ctx.fillStyle = '#FFFFFF'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // Franja superior
     ctx.fillStyle = primaryColor || '#4F46E5'
     ctx.fillRect(0, 0, canvas.width, 26)
-
-    // Borde exterior
     ctx.lineWidth = 3
     ctx.strokeStyle = '#E5E7EB'
     ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40)
 
-    // Encabezado
     ctx.textAlign = 'center'
     ctx.fillStyle = '#111827'
     ctx.font = 'bold 36px serif'
@@ -101,12 +132,10 @@ export default function RsvpModule({
     ctx.lineTo(canvas.width - 70, 155)
     ctx.stroke()
 
-    // Nombre del Invitado
     ctx.fillStyle = '#1F2937'
     ctx.font = 'bold 34px sans-serif'
     ctx.fillText(pass.guest_name, canvas.width / 2, 215)
 
-    // Fecha y Lugar
     ctx.fillStyle = '#F9FAFB'
     ctx.fillRect(60, 250, canvas.width - 120, 140)
     ctx.strokeStyle = '#E5E7EB'
@@ -118,8 +147,10 @@ export default function RsvpModule({
     ctx.fillText(`📅  ${eventDate}`, 90, 305)
     ctx.fillText(`📍  ${eventLocation}`, 90, 355)
 
-    // QR
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${pass.id}`
+    // 2. CORRECCIÓN DEL CÓDIGO QR EN LA IMAGEN (Usa pass.qr_hash)
+    const passUrl = `${window.location.origin}/pass/${pass.qr_hash}`
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(passUrl)}`
+    
     const qrImg = new Image()
     qrImg.crossOrigin = 'anonymous'
     qrImg.src = qrUrl
@@ -137,15 +168,12 @@ export default function RsvpModule({
     ctx.fillRect(qrX - 12, qrY - 12, qrSize + 24, qrSize + 24)
     ctx.strokeStyle = '#E5E7EB'
     ctx.strokeRect(qrX - 12, qrY - 12, qrSize + 24, qrSize + 24)
-
     ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
 
-    // Pie
     ctx.textAlign = 'center'
     ctx.fillStyle = '#6B7280'
     ctx.font = 'bold 18px monospace'
     ctx.fillText(`FOLIO: #${pass.id.split('-')[0].toUpperCase()}`, canvas.width / 2, 820)
-
     ctx.fillStyle = '#9CA3AF'
     ctx.font = '14px sans-serif'
     ctx.fillText('Presenta este pase digital en la recepción del evento', canvas.width / 2, 860)
@@ -153,7 +181,6 @@ export default function RsvpModule({
     return canvas
   }
 
-  // Descarga del pase completo en imagen
   const handleDownloadFullPass = async (pass: Pass) => {
     try {
       setIsProcessingPass(true)
@@ -172,13 +199,10 @@ export default function RsvpModule({
     }
   }
 
-  // Enviar por WhatsApp adaptado a móviles y escritorio
   const handleShareWhatsApp = async (pass: Pass) => {
     try {
       setIsProcessingPass(true)
       const canvas = await createPassCanvas(pass)
-
-      // Comprobar si es un navegador móvil real con soporte de compartir archivos
       const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
       if (isMobile && navigator.share && navigator.canShare) {
@@ -196,7 +220,6 @@ export default function RsvpModule({
         }
       }
 
-      // Flujo de escritorio: Descarga automática del pase + Apertura directa de WhatsApp
       const dataUrl = canvas.toDataURL('image/png')
       const link = document.createElement('a')
       link.href = dataUrl
@@ -235,9 +258,7 @@ export default function RsvpModule({
       {/* 1. SECCIÓN DE CONFIRMACIÓN */}
       <div className="mb-6">
         <h3 className="text-xl font-bold text-gray-900">Confirmación de Asistencia</h3>
-        <p className="text-xs text-gray-500 mt-1">
-          Indica la asistencia para cada persona de tu invitación:
-        </p>
+        <p className="text-xs text-gray-500 mt-1">Indica la asistencia para cada persona de tu invitación:</p>
 
         <div className="mt-4 space-y-3">
           {groupPasses.map(pass => {
@@ -246,10 +267,7 @@ export default function RsvpModule({
             const isDeclined = pass.rsvp_status === 'declined'
 
             return (
-              <div 
-                key={pass.id} 
-                className="flex items-center justify-between p-3.5 bg-gray-50 rounded-2xl border border-gray-100"
-              >
+              <div key={pass.id} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-2xl border border-gray-100">
                 <span className="font-medium text-gray-800 text-sm">{pass.guest_name}</span>
 
                 {isPending ? (
@@ -289,35 +307,25 @@ export default function RsvpModule({
         </div>
       </div>
 
-      {/* AVISO DE CAMBIOS */}
+      {/* AVISOS DE CAMBIOS / CORREO */}
       {hasAnsweredAny && (
         <div className="mb-6 p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl text-xs text-amber-900 space-y-2">
           <div className="flex items-center gap-1.5 font-semibold text-amber-950">
-            <span>🔒</span>
-            <span>Respuestas registradas</span>
+            <span>🔒</span><span>Respuestas registradas</span>
           </div>
           <p className="text-amber-800/90 leading-relaxed">
             Para garantizar la logística del evento, las respuestas no pueden modificarse desde esta página.
             {hasAnyContact && ' Si necesitas realizar un cambio o imprevisto, comunícate con el organizador:'}
           </p>
-          
           {hasAnyContact && (
             <div className="flex flex-wrap items-center gap-2 pt-1 font-medium">
               {hasPhone && (
-                <a 
-                  href={organizerWhatsAppUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-amber-200 rounded-lg text-emerald-700 hover:bg-amber-100/50 transition-colors shadow-2xs"
-                >
+                <a href={organizerWhatsAppUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-amber-200 rounded-lg text-emerald-700 hover:bg-amber-100/50 transition-colors shadow-2xs">
                   💬 WhatsApp ({organizerPhone})
                 </a>
               )}
               {hasEmail && (
-                <a 
-                  href={`mailto:${organizerEmail}?subject=Solicitud de cambio en RSVP`}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-amber-200 rounded-lg text-amber-900 hover:bg-amber-100/50 transition-colors shadow-2xs"
-                >
+                <a href={`mailto:${organizerEmail}?subject=Solicitud de cambio en RSVP`} className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-amber-200 rounded-lg text-amber-900 hover:bg-amber-100/50 transition-colors shadow-2xs">
                   ✉️ {organizerEmail}
                 </a>
               )}
@@ -326,86 +334,52 @@ export default function RsvpModule({
         </div>
       )}
 
-      {/* AVISO DE CORREO */}
-      {hasConfirmedGuests && (
-        <div className="mb-6 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2.5 text-xs text-blue-800">
-          <span>✉️</span>
-          <span>Pases respaldados al correo registrado{contactEmail ? `: ${contactEmail}` : '.'}</span>
+      {hasConfirmedGuests && emailStatus === 'hidden' && contactEmail && (
+        <div className="mb-6 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2.5 text-xs text-blue-800 animate-in fade-in duration-300">
+          <span>✉️</span><span>Pases respaldados al correo registrado: {contactEmail}</span>
         </div>
       )}
 
-      {/* 2. SLIDER DE PASES DIGITALES (VISTA SIMPLIFICADA) */}
+      {/* 2. SLIDER DE PASES DIGITALES */}
       {hasConfirmedGuests && (
         <div className="border-t border-gray-100 pt-6">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
               Pase {activeSlide + 1} de {confirmedPasses.length}
             </span>
-            
             {confirmedPasses.length > 1 && (
               <div className="flex gap-1">
-                <button
-                  onClick={() => setActiveSlide(prev => Math.max(0, prev - 1))}
-                  disabled={activeSlide === 0}
-                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  ←
-                </button>
-                <button
-                  onClick={() => setActiveSlide(prev => Math.min(confirmedPasses.length - 1, prev + 1))}
-                  disabled={activeSlide === confirmedPasses.length - 1}
-                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  →
-                </button>
+                <button onClick={() => setActiveSlide(prev => Math.max(0, prev - 1))} disabled={activeSlide === 0} className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">←</button>
+                <button onClick={() => setActiveSlide(prev => Math.min(confirmedPasses.length - 1, prev + 1))} disabled={activeSlide === confirmedPasses.length - 1} className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">→</button>
               </div>
             )}
           </div>
 
           {confirmedPasses[activeSlide] && (() => {
             const currentPass = confirmedPasses[activeSlide]
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${currentPass.id}`
+            
+            // 3. CORRECCIÓN DEL QR EN EL SLIDER EN PANTALLA (Usa currentPass.qr_hash)
+            const passUrl = `${window.location.origin}/pass/${currentPass.qr_hash}`
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(passUrl)}`
 
             return (
               <div className="p-6 bg-gradient-to-b from-gray-50 to-white rounded-3xl border border-gray-200 shadow-sm text-center animate-in fade-in duration-200">
                 <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100 uppercase tracking-wider">
                   Acceso Válido
                 </span>
-
-                {/* Solo se muestra el nombre del invitado */}
-                <h4 className="text-xl font-bold text-gray-900 mt-3">
-                  {currentPass.guest_name}
-                </h4>
-
-                {/* Código QR */}
+                <h4 className="text-xl font-bold text-gray-900 mt-3">{currentPass.guest_name}</h4>
                 <div className="my-3 inline-block p-3 bg-white rounded-2xl border border-gray-100 shadow-xs">
-                  <img 
-                    src={qrUrl} 
-                    alt={`QR de ${currentPass.guest_name}`} 
-                    className="w-36 h-36 mx-auto object-contain"
-                  />
+                  <img src={qrUrl} alt={`QR de ${currentPass.guest_name}`} className="w-36 h-36 mx-auto object-contain" />
                 </div>
-
                 <p className="text-[11px] font-mono tracking-widest text-gray-400">
                   FOLIO: #{currentPass.id.split('-')[0].toUpperCase()}
                 </p>
-
-                {/* Botones de acción */}
                 <div className="flex flex-col sm:flex-row gap-2 mt-5">
-                  <button
-                    disabled={isProcessingPass}
-                    onClick={() => handleShareWhatsApp(currentPass)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-3 px-3 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-xs"
-                  >
-                    <span>💬</span> {isProcessingPass ? 'Generando...' : 'Enviar por WhatsApp'}
+                  <button disabled={isProcessingPass} onClick={() => handleShareWhatsApp(currentPass)} className="flex-1 flex items-center justify-center gap-1.5 py-3 px-3 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-xs">
+                    <span>💬</span> {isProcessingPass ? 'Generando...' : 'WhatsApp'}
                   </button>
-
-                  <button
-                    disabled={isProcessingPass}
-                    onClick={() => handleDownloadFullPass(currentPass)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-3 px-3 bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-xs"
-                  >
-                    <span>📥</span> {isProcessingPass ? 'Generando...' : 'Guardar Imagen'}
+                  <button disabled={isProcessingPass} onClick={() => handleDownloadFullPass(currentPass)} className="flex-1 flex items-center justify-center gap-1.5 py-3 px-3 bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-xs">
+                    <span>📥</span> {isProcessingPass ? 'Generando...' : 'Guardar'}
                   </button>
                 </div>
               </div>
@@ -415,16 +389,42 @@ export default function RsvpModule({
           {confirmedPasses.length > 1 && (
             <div className="flex justify-center gap-1.5 mt-4">
               {confirmedPasses.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setActiveSlide(index)}
-                  className={`h-2 rounded-full transition-all ${
-                    activeSlide === index ? 'w-6 bg-gray-900' : 'w-2 bg-gray-300'
-                  }`}
-                />
+                <button key={index} onClick={() => setActiveSlide(index)} className={`h-2 rounded-full transition-all ${activeSlide === index ? 'w-6 bg-gray-900' : 'w-2 bg-gray-300'}`} />
               ))}
             </div>
           )}
+
+          {emailStatus !== 'hidden' && (
+            <div className="mt-8 bg-blue-50/60 p-5 rounded-2xl border border-blue-100 text-left animate-in fade-in duration-300 transition-all">
+              <h3 className="text-sm font-semibold text-gray-800 mb-1">¿Deseas un respaldo en tu correo?</h3>
+              <p className="text-xs text-gray-600 mb-4 leading-relaxed">
+                Recibe tus pases y obtén un <strong>cupón del 10% de cortesía</strong> para crear tu próxima invitación digital.
+              </p>
+              
+              <form onSubmit={handleEmailSubmit} className="flex flex-col gap-2">
+                <input 
+                  type="email" 
+                  required
+                  placeholder="tu@correo.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={emailStatus !== 'idle'}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 text-sm"
+                />
+                <button 
+                  type="submit" 
+                  disabled={emailStatus !== 'idle'}
+                  style={{ backgroundColor: emailStatus === 'sent' ? '#10B981' : (primaryColor || '#2563EB') }}
+                  className="w-full py-2.5 rounded-lg font-medium text-sm text-white transition-all disabled:opacity-70 shadow-sm"
+                >
+                  {emailStatus === 'idle' && 'Enviarme mis pases'}
+                  {emailStatus === 'loading' && 'Enviando...'}
+                  {emailStatus === 'sent' && '✓ Pases enviados'}
+                </button>
+              </form>
+            </div>
+          )}
+
         </div>
       )}
 
