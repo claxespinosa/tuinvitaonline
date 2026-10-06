@@ -43,6 +43,7 @@ export default function RsvpModule({
 
   const [email, setEmail] = useState('')
   const [emailStatus, setEmailStatus] = useState<'idle' | 'loading' | 'sent' | 'hidden'>('idle')
+  const [whatsappModal, setWhatsappModal] = useState<{show: boolean, url: string}>({show: false, url: ''})
 
   // Verifica si ya se envió el correo en este dispositivo
   useEffect(() => {
@@ -199,12 +200,15 @@ export default function RsvpModule({
     }
   }
 
+  // Enviar por WhatsApp adaptado a móviles y escritorio
   const handleShareWhatsApp = async (pass: Pass) => {
     try {
       setIsProcessingPass(true)
       const canvas = await createPassCanvas(pass)
+      
       const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
+      // 1. FLUJO MÓVIL (Nativo, adjunta imagen automáticamente)
       if (isMobile && navigator.share && navigator.canShare) {
         const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'))
         if (blob) {
@@ -220,20 +224,25 @@ export default function RsvpModule({
         }
       }
 
-      const dataUrl = canvas.toDataURL('image/png')
-      const link = document.createElement('a')
-      link.href = dataUrl
-      link.download = `pase-${pass.guest_name.toLowerCase().replace(/\s+/g, '-')}.png`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
+      // 2. FLUJO ESCRITORIO (Copia silenciosa + Modal instructivo)
+      
+      // A) Copiamos la imagen al portapapeles (sin descargar nada)
+      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'))
+      if (blob) {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+      }
 
-      const currentUrl = typeof window !== 'undefined' ? window.location.href : ''
-      const message = `🎟️ *Mi Pase Digital - ${eventTitle}*\n\nHola ${pass.guest_name}, adjunto tu pase digital de acceso.\n\nFolio: *#${pass.id.split('-')[0].toUpperCase()}*\nVerificación: ${currentUrl}`
-      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank')
+      // B) Preparamos la URL de WhatsApp con el texto
+      const message = `🎟️ *Mi Pase Digital - ${eventTitle}*\n\nHola ${pass.guest_name}, te comparto tu pase de acceso.\n\nFolio: *#${pass.id.split('-')[0].toUpperCase()}*`
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`
+
+      // C) Mostramos el Modal al usuario en lugar de redirigirlo de golpe
+      setWhatsappModal({ show: true, url: whatsappUrl })
+
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.error('Error al compartir pase:', err)
+        alert('Tu navegador no permite copiar imágenes automáticamente. Por favor usa el botón "Guardar".')
       }
     } finally {
       setIsProcessingPass(false)
@@ -434,6 +443,40 @@ export default function RsvpModule({
       >
         Cerrar ventana
       </button>
+
+      {/* 4. MODAL DE INSTRUCCIONES WHATSAPP (Solo Desktop) */}
+      {whatsappModal.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <div className="text-4xl mb-3">📋</div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">¡Pase copiado!</h3>
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              La imagen de tu pase está en el portapapeles.<br/><br/>
+              Haz clic en continuar, ve a la barra de tu chat y presiona:<br/>
+              <strong className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded-lg mt-3 inline-block font-mono text-sm border border-gray-200 shadow-sm">
+                Ctrl + V <span className="font-sans font-normal text-xs text-gray-500">(o Cmd+V)</span>
+              </strong>
+            </p>
+            <div className="flex flex-col gap-2">
+              <a
+                href={whatsappModal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setWhatsappModal({show: false, url: ''})}
+                className="w-full bg-[#25D366] text-white font-bold py-3.5 rounded-xl hover:bg-[#1ebd5a] transition-colors shadow-sm flex items-center justify-center gap-2"
+              >
+                Continuar a WhatsApp
+              </a>
+              <button
+                onClick={() => setWhatsappModal({show: false, url: ''})}
+                className="text-xs text-gray-500 font-medium hover:text-gray-800 py-3 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
